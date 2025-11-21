@@ -1,0 +1,55 @@
+# ---------------------
+# Python & FastAPI
+# ---------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+pip-wheel-metadata/
+
+# ---------------------
+# Bytecode / Caches
+# ---------------------
+*.pytest_cache/
+.cache/
+.mypy_cache/
+.pytest_cache/
+
+# ---------------------
+# Virtual Environments
+# ---------------------
+.venv/
+venv/
+env/
+ENV/
+*.env
+*.env.*
+!example.env
+.conda/
+*.conda
+*.lock
+
+# ---------------------
+# Editor / IDE
+# ---------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ---------------------
+# OS generated
+# ---------------------
+.DS_Store
+Thumbs.db
+
+# ---------------------
+# Uvicorn / Logs
+# ---------------------
+*.log
+logs/
