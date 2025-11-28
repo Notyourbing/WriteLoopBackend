@@ -1,47 +1,72 @@
+# app/services/suggest_service.py
 import json
 from app.services.llm_client import client
+from app.services.rag_retriever import retrieve_similar_continuations
 
-def generate_suggestions(text: str, cursor: dict):
+
+def generate_suggestions(text: str, cursor: dict) -> str:
     """
-    根据用户输入生成下一个单词的 3 个并行建议，返回的每个单词应该是可以直接接在文本后面的单独建议。
-    且返回格式应严格遵循：3 个单词，单独且用空格分隔。
+    Generate 3 high-quality, academically appropriate ENGLISH PHRASES 
+    that can naturally follow the user's current text.
+
+    - Input: full text (we use last ~100 chars as context)
+    - Output: 3 phrases (2-8 words), with explanations, in JSON
     """
-    # 设计严格的 prompt，确保返回的结果为 3 个单词
-    prompt = (
-        f"Given the sentence: '{text}', suggest the next word "
-        "that could logically follow. Return exactly three choices., "
-        "separated by spaces, with no additional explanation, punctuation, or extra text."
-    )
+    if not text.strip():
+        return json.dumps({"suggestions": []})
 
-    # 构建消息列表，传递给 OpenAI
-    messages = [
-        {"role": "system", "content": "You are a helpful assistant."},
-        {"role": "user", "content": prompt}
-    ]
+    # Use last 100 characters as context to avoid token overflow
+    context = text[-100:].strip()
 
+    # Retrieve relevant examples from student's "reading history" (mocked)
+    retrieved_examples = retrieve_similar_continuations(context, top_k=3)
+
+    # Build strong-constraint prompt
+    prompt = f"""
+    You are an IELTS writing coach. The student is composing an academic English essay.
+
+    Current text they have written:
+    "{context}"
+
+    They are about to continue writing. Your task is to suggest EXACTLY 3 natural, advanced, and exam-appropriate ENGLISH PHRASES 
+    that can LOGICALLY and GRAMMATICALLY FOLLOW this text — as if the student is continuing their sentence.
+
+    CRITICAL RULES:
+    1. Each phrase must be 2 to 8 words long.
+    2. Use formal, academic vocabulary (Band 7+ or CET-6 level).
+    3. NEVER use: "and", "but", "so", "I think", "very", "good", "bad", "help", "make", "thing", "stuff".
+    4. MUST be grammatically compatible with the current sentence structure.
+       - If the current sentence ends with a noun (like "air pollution"), the suggestion should start with a verb or relative clause.
+       - Example: "which significantly harms public health" OR "that exacerbates climate change"
+    5. Avoid standalone sentences — only provide continuations that complete the existing thought.
+    6. If possible, echo the style of these real examples:
+    {chr(10).join([f' - "{ex}"' for ex in retrieved_examples])}
+
+    Return a STRICT JSON object with this structure:
+    {{
+      "suggestions": [
+        {{
+          "text": "exact phrase here",
+          "explain": "1-sentence teaching note: why this phrase is strong AND grammatically correct in context"
+        }},
+        ...
+      ]
+    }}
+    DO NOT add any other text, markdown, or explanation outside the JSON.
+    """
     try:
-        # 调用 OpenAI API 获取补全建议
-        completion = client.chat.completions.create(model="gpt-4o-mini", messages=messages)
-
-        # 获取模型返回的文本（应该是 3 个单词）
-        suggestions = completion.choices[0].message.content.strip()
-
-        # 确保返回的文本严格是 3 个单词，按空格分隔
-        suggestion_list = suggestions.split()
-
-        # 如果返回的单词数不是 3 个，打印错误信息
-        if len(suggestion_list) == 3:
-            response = [
-                {"text": suggestion, "explain": f"Suggested next word: {suggestion}"}
-                for suggestion in suggestion_list
-            ]
-
-            # 将结果转化为 JSON 格式并返回
-            return json.dumps(response)
-        else:
-            # 如果返回的单词数不为 3，输出错误信息
-            print(f"Error: Expected 3 words, but received: {len(suggestion_list)}")
-            return json.dumps([])  # 返回空数组，表示错误
+        completion = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},  # Enforce JSON
+            temperature=0.7,  # Slight creativity
+            max_tokens=300
+        )
+        result = completion.choices[0].message.content
+        # Validate it's valid JSON
+        json.loads(result)  # Will raise if invalid
+        return result
     except Exception as e:
-        print(f"Error generating suggestions: {e}")
-        return json.dumps([])  # 返回空数组，表示错误
+        print(f"Suggestion generation error: {e}")
+        # Fallback: return safe empty response
+        return json.dumps({"suggestions": []})
