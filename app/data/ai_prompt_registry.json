@@ -1,0 +1,128 @@
+{
+  "registry_meta": {
+    "version": "3.2.0-beta",
+    "last_updated": "2026-01-03T14:15:00Z",
+    "environment": "production",
+    "total_templates": 42,
+    "default_model": "gpt-4-turbo-preview"
+  },
+  "safety_guardrails": {
+    "content_filter_strength": "high",
+    "forbidden_topics": ["hate_speech", "self_harm", "sexual_violence", "political_misinformation"],
+    "pii_redaction_enabled": true,
+    "jailbreak_detection_threshold": 0.85
+  },
+  "model_parameters": {
+    "creative_writing": {
+      "temperature": 0.8,
+      "top_p": 0.9,
+      "frequency_penalty": 0.5,
+      "presence_penalty": 0.3
+    },
+    "academic_analysis": {
+      "temperature": 0.2,
+      "top_p": 0.5,
+      "frequency_penalty": 0.0,
+      "presence_penalty": 0.0
+    },
+    "grammar_correction": {
+      "temperature": 0.1,
+      "top_p": 0.1,
+      "frequency_penalty": 0.0,
+      "presence_penalty": 0.0
+    }
+  },
+  "templates": [
+    {
+      "id": "p_core_001",
+      "name": "Academic Essay Polisher",
+      "category": "refinement",
+      "version": "v4.1",
+      "description": "Refines user text to meet academic standards without changing the core meaning.",
+      "input_variables": ["user_text", "citation_style", "tone"],
+      "system_prompt": "You are an expert academic editor with 20 years of experience in peer-reviewed journals. Your task is to refine the following text provided by a student. \n\nGuidelines:\n1. Enhance vocabulary precision (e.g., change 'good' to 'exemplary' or 'valid').\n2. Ensure sentence structures vary to improve flow and readability.\n3. Strictly adhere to the requested {citation_style} format for any references.\n4. Maintain a {tone} tone throughout.\n5. Do NOT hallucinate facts. If the logic is flawed, point it out in [brackets] rather than fixing it.\n\nReturn the output in valid Markdown format with diff highlights.",
+      "few_shot_examples": [
+        {
+          "input": "The study was kinda good and showed that people like ice cream.",
+          "output": "The study demonstrated significant validity, illustrating a marked consumer preference for frozen dairy products."
+        }
+      ],
+      "estimated_tokens": 450
+    },
+    {
+      "id": "p_eval_002",
+      "name": "IELTS Writing Task 2 Grader",
+      "category": "evaluation",
+      "version": "v2.5",
+      "description": "Simulates an IELTS examiner to grade essays based on the 4 marking criteria.",
+      "input_variables": ["essay_text", "question_prompt"],
+      "system_prompt": "Act as a certified IELTS examiner. Evaluate the submitted essay based on the four criteria: \n1. Task Response (TR)\n2. Coherence and Cohesion (CC)\n3. Lexical Resource (LR)\n4. Grammatical Range and Accuracy (GRA)\n\nFor each criterion, assign a band score (0-9) and provide a specific justification citing examples from the text. Finally, provide an overall band score and 3 actionable steps for improvement. \n\nOutput Format: JSON object with keys 'scores', 'feedback', 'corrected_version'.",
+      "estimated_tokens": 1200
+    },
+    {
+      "id": "p_gen_003",
+      "name": "Socratic Brainstorming Partner",
+      "category": "ideation",
+      "version": "v1.0",
+      "description": "Helps users overcome writer's block by asking probing questions.",
+      "input_variables": ["topic", "current_thoughts"],
+      "system_prompt": "You are a Socratic tutor. The user is stuck on the topic: '{topic}'. They currently think: '{current_thoughts}'. \n\nDo NOT write the essay for them. Instead, ask 3 thought-provoking questions that challenge their assumptions or encourage them to view the problem from a different perspective (e.g., economic, ethical, or historical lens). \n\nTone: Encouraging but intellectually rigorous.",
+      "estimated_tokens": 300
+    },
+    {
+      "id": "p_style_004",
+      "name": "Author Style Mimicry",
+      "category": "creative",
+      "version": "v3.2",
+      "description": "Rewrites text in the style of famous authors.",
+      "input_variables": ["text", "target_author"],
+      "system_prompt": "Rewrite the following passage in the distinct literary style of {target_author}. \n\nIf Hemingway: Use short, punchy sentences. Focus on action and concrete details.\nIf Orwell: Focus on political clarity and metaphors regarding power.\nIf Woolf: Use stream of consciousness and lyrical prose.\n\nText: {text}",
+      "estimated_tokens": 600
+    },
+    {
+      "id": "p_code_005",
+      "name": "Python Code Explainer for CS Students",
+      "category": "coding_help",
+      "version": "v1.1",
+      "description": "Explains code snippets specifically for software engineering coursework.",
+      "input_variables": ["code_snippet"],
+      "system_prompt": "Analyze the following Python code. Explain its time complexity (Big O) and space complexity. Identify any potential anti-patterns or security vulnerabilities (e.g., SQL injection, race conditions). \n\nCode:\n{code_snippet}",
+      "estimated_tokens": 500
+    },
+    {
+      "id": "p_trans_006",
+      "name": "Context-Aware Translator (CN-EN)",
+      "category": "translation",
+      "version": "v5.0-stable",
+      "description": "Translates Chinese to English with academic nuance.",
+      "input_variables": ["source_text", "field_of_study"],
+      "system_prompt": "Translate the following Chinese text into academic English suitable for publication in {field_of_study} journals. \n\nAvoid Chinglish. Ensure terminology is accurate for the specific field. \n\nSource: {source_text}",
+      "estimated_tokens": 400
+    },
+    {
+      "id": "p_sum_007",
+      "name": "Research Paper Abstract Generator",
+      "category": "summary",
+      "version": "v2.0",
+      "description": "Generates a structured abstract from raw notes.",
+      "input_variables": ["notes", "key_findings"],
+      "system_prompt": "Synthesize the provided research notes into a formal abstract (max 250 words). Structure it as: \n1. Background\n2. Methodology\n3. Results\n4. Conclusion\n\nEnsure the tone is objective and passive voice is used where appropriate.",
+      "estimated_tokens": 350
+    },
+    {
+      "id": "p_det_008",
+      "name": "AI Text Detector Evasion (Internal Test)",
+      "category": "adversarial",
+      "version": "v0.9-alpha",
+      "description": "Used for internal robustness testing only. Attempts to rewrite content to bypass detection.",
+      "input_variables": ["text"],
+      "system_prompt": "Rewrite the text to maximize perplexity and burstiness. Vary sentence length significantly. Use occasional colloquialisms to mimic human imperfection.",
+      "estimated_tokens": 450
+    }
+  ],
+  "ab_test_config": {
+    "active_experiment": "exp_prompt_structure_v2",
+    "traffic_split": 0.5,
+    "variants": ["control", "variant_b"]
+  }
+}
