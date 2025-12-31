@@ -1,4 +1,4 @@
-from app.services.llm_client import client
+from app.services.llm_client import client, OPENAI_MODEL
 from app.data.writing_corpus import get_ielts_essays
 import json
 import os
@@ -141,7 +141,7 @@ IMPORTANT RULES:
 
     try:
         completion = client.chat.completions.create(
-            model="gpt-4o",
+            model=OPENAI_MODEL,
             messages=[
                 {
                     "role": "system",
@@ -154,8 +154,7 @@ IMPORTANT RULES:
                 {"role": "user", "content": prompt},
             ],
             response_format={"type": "json_object"},
-            temperature=0.3,
-            max_tokens=2000,
+            max_completion_tokens=2000,
         )
 
         result = completion.choices[0].message.content.strip()
@@ -230,7 +229,7 @@ IMPORTANT:
 
     try:
         completion = client.chat.completions.create(
-            model="gpt-4o",
+            model=OPENAI_MODEL,
             messages=[
                 {
                     "role": "system",
@@ -242,8 +241,7 @@ IMPORTANT:
                 {"role": "user", "content": prompt},
             ],
             response_format={"type": "json_object"},
-            temperature=0.5,
-            max_tokens=1000,
+            max_completion_tokens=1000,
         )
 
         result = completion.choices[0].message.content.strip()
@@ -256,5 +254,3 @@ IMPORTANT:
         return json.dumps({
             "tasks": []
         })
-
-

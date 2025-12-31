@@ -1,6 +1,7 @@
 # app/services/suggest_service.py
 import json
-from app.services.llm_client import client
+import re
+from app.services.llm_client import client, OPENAI_MODEL
 from app.services.rag_retriever import retrieve_similar_continuations
 
 
@@ -56,16 +57,26 @@ def generate_suggestions(text: str, cursor: dict, read_essay_ids: list = None) -
     """
     try:
         completion = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=OPENAI_MODEL,
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"},  # Enforce JSON
-            temperature=0.7,  # Slight creativity
-            max_tokens=300
+            max_completion_tokens=2000
         )
-        result = completion.choices[0].message.content
-        # Validate it's valid JSON
-        json.loads(result)  # Will raise if invalid
-        return result
+        result = completion.choices[0].message.content or ""
+        result = result.strip()
+        if not result:
+            raise ValueError("Empty LLM response")
+
+        try:
+            parsed = json.loads(result)
+        except json.JSONDecodeError:
+            # Some models may wrap JSON in extra text; try to extract the JSON object.
+            match = re.search(r"\{.*\}", result, re.DOTALL)
+            if not match:
+                raise
+            parsed = json.loads(match.group(0))
+
+        return json.dumps(parsed, ensure_ascii=False)
     except Exception as e:
         print(f"Suggestion generation error: {e}")
         # Fallback: return safe empty response

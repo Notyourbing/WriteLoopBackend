@@ -1,14 +1,25 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends, status, Query
+from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from app.services.suggest_service import generate_suggestions
 from app.services.rewrite_service import rewrite_sentence
 from app.services.logic_profile_service import analyze_logic_with_profile, generate_tasks_for_profile
 from app.services.essay_service import get_all_essays, get_essay_by_id
 from fastapi.middleware.cors import CORSMiddleware
+from app.models import init_db, get_db, User
+from app.auth import (
+    authenticate_user, get_password_hash, create_access_token,
+    get_user_by_username, get_current_user
+)
+from sqlalchemy.orm import Session
+from datetime import timedelta
 import json
 from typing import Optional, Any, List
 
 app = FastAPI()
+
+# 初始化数据库
+init_db()
 
 # CORS configuration
 origins = [
@@ -41,12 +52,39 @@ class TaskRequest(BaseModel):
     text: str = ""
 
 
+class UserRegister(BaseModel):
+    username: str
+    password: str
+
+
+class UserResponse(BaseModel):
+    id: int
+    username: str
+    created_at: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+    user: UserResponse
+
+
 def parse_json_response(result: str, default_key: str = "data"):
     """Parse JSON response with error handling."""
     try:
         return json.loads(result)
     except json.JSONDecodeError:
         return {default_key: []}
+
+def to_user_response(user: User) -> UserResponse:
+    return UserResponse(
+        id=user.id,
+        username=user.username,
+        created_at=user.created_at.isoformat() if user.created_at else None,
+    )
 
 @app.post("/suggest")
 async def get_suggestions(request: SuggestionRequest):
@@ -83,9 +121,12 @@ async def generate_tasks_endpoint(request: TaskRequest):
 
 # IELTS Essay Reading APIs
 @app.get("/essays")
-async def get_essays():
+async def get_essays(
+    brief: bool = Query(False, description="Return lightweight summaries only."),
+    preview_len: int = Query(200, ge=0, le=1000, description="Preview length for brief mode."),
+):
     """Get all IELTS essays."""
-    essays = get_all_essays()
+    essays = get_all_essays(brief=brief, preview_len=preview_len)
     return {"essays": essays, "total": len(essays)}
 
 
@@ -98,3 +139,79 @@ async def get_essay(essay_id: int):
     return {"essay": essay}
 
 
+# 用户认证相关API
+@app.post("/register", response_model=Token)
+async def register(user_data: UserRegister, db: Session = Depends(get_db)):
+    """用户注册"""
+    # 检查用户名是否已存在
+    if get_user_by_username(db, user_data.username):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="用户名已存在"
+        )
+    # 创建新用户
+    hashed_password = get_password_hash(user_data.password)
+    db_user = User(
+        username=user_data.username,
+        hashed_password=hashed_password
+    )
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+    # 生成token
+    access_token_expires = timedelta(minutes=30 * 24 * 60)
+    access_token = create_access_token(
+        data={"sub": db_user.username}, expires_delta=access_token_expires
+    )
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": to_user_response(db_user)
+    }
+
+
+@app.post("/login", response_model=Token)
+async def login(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db)
+):
+    """用户登录"""
+    user = authenticate_user(db, form_data.username, form_data.password)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="用户名或密码错误",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    access_token_expires = timedelta(minutes=30 * 24 * 60)
+    access_token = create_access_token(
+        data={"sub": user.username}, expires_delta=access_token_expires
+    )
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": to_user_response(user)
+    }
+
+
+@app.get("/me", response_model=UserResponse)
+async def get_current_user_info(current_user: User = Depends(get_current_user)):
+    """获取当前登录用户信息"""
+    return to_user_response(current_user)
+
+
+@app.get("/users")
+async def get_all_users(db: Session = Depends(get_db)):
+    """获取所有用户列表（仅用于开发调试）"""
+    users = db.query(User).all()
+    return {
+        "total": len(users),
+        "users": [
+            {
+                "id": user.id,
+                "username": user.username,
+                "created_at": user.created_at.isoformat() if user.created_at else None
+            }
+            for user in users
+        ]
+    }

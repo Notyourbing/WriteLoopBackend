@@ -1,4 +1,4 @@
-from app.services.llm_client import client
+from app.services.llm_client import client, OPENAI_MODEL
 import json
 
 def rewrite_sentence(sentence: str) -> str:
@@ -13,7 +13,7 @@ def rewrite_sentence(sentence: str) -> str:
     ]
 
     try:
-        completion = client.chat.completions.create(model="gpt-4o-mini", messages=messages)
+        completion = client.chat.completions.create(model=OPENAI_MODEL, messages=messages)
         rewritten_text = completion.choices[0].message.content.strip()
 
         response = {
