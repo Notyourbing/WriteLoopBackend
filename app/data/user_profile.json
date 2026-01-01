@@ -1,21 +1,22 @@
 {
-  "logic_level": "Basic level, struggling to construct coherent arguments with a clear thesis and evidence.",
+  "logic_level": "Basic level with significant difficulty constructing coherent arguments",
   "logic_weak_points": [
     "often omits topic sentences in body paragraphs",
     "frequently confuses cause and effect",
-    "lacks a structured argument with premises leading to conclusions"
+    "lacks a structured argument with premises leading to conclusions",
+    "missing clear thesis and seamless transitions"
   ],
-  "vocabulary_level": "Basic vocabulary with limited academic precision.",
+  "vocabulary_level": "Basic vocabulary with very limited academic precision",
   "vocabulary_weak_points": [
     "overuses basic terms, rarely includes advanced vocabulary",
     "relies heavily on everyday language"
   ],
-  "grammar_level": "Moderate with occasional errors, mainly in complex constructions.",
+  "grammar_level": "Moderate with occasional errors, mainly in complex constructions",
   "grammar_weak_points": [
     "misuse of conjunctions leading to awkward sentences",
     "limited range of sentence structures"
   ],
-  "structure_level": "Inadequate paragraphing and transitions with limited coherence.",
+  "structure_level": "Inadequate paragraphing and transitions with very limited coherence",
   "structure_weak_points": [
     "rarely uses contrastive transitions such as 'however', 'on the other hand'",
     "lacks summarizing or linking phrases in the conclusion"

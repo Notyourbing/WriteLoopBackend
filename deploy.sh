@@ -22,8 +22,8 @@ fi
 echo "安装依赖..."
 npm install
 
-echo "构建项目..."
-npm run build
+# echo "构建项目..."
+# npm run build
 
 if [ ! -d "dist" ]; then
     echo "错误: 构建失败，未找到 dist 目录"
@@ -52,8 +52,8 @@ fi
 echo "复制构建产物到 $DEPLOY_DIR..."
 sudo cp -r /root/WriteLoop/dist/* $DEPLOY_DIR/
 
-# 设置权限
-sudo chown -R www-data:www-data $DEPLOY_DIR
+# 设置权限（CentOS/RHEL/Alibaba Cloud Linux 使用 nginx 用户）
+sudo chown -R nginx:nginx $DEPLOY_DIR
 sudo chmod -R 755 $DEPLOY_DIR
 
 echo "文件部署完成！"

@@ -6,7 +6,7 @@ from app.services.rewrite_service import rewrite_sentence
 from app.services.logic_profile_service import analyze_logic_with_profile, generate_tasks_for_profile
 from app.services.essay_service import get_all_essays, get_essay_by_id
 from fastapi.middleware.cors import CORSMiddleware
-from app.models import init_db, get_db, User
+from app.models import init_db, get_db, User, UserProfile
 from app.auth import (
     authenticate_user, get_password_hash, create_access_token,
     get_user_by_username, get_current_user
@@ -25,6 +25,8 @@ init_db()
 origins = [
     "http://localhost:5173",
     "http://127.0.0.1:8080",
+    "http://47.237.161.90",
+    "http://localhost",
 ]
 
 app.add_middleware(
@@ -98,23 +100,31 @@ async def rewrite_sentence_endpoint(request: RewriteRequest):
     return parse_json_response(result)
 
 @app.post("/analyze-logic")
-async def analyze_logic_endpoint(request: LogicAnalysisRequest):
+async def analyze_logic_endpoint(
+    request: LogicAnalysisRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     """
     Logic analysis endpoint.
     Receives complete article content, uses GPT-4o to analyze logical flaws and provide improvement suggestions.
     """
     # use enhanced logic analysis that also updates user profile
-    result = analyze_logic_with_profile(request.text)
+    result = analyze_logic_with_profile(request.text, user_id=current_user.id, db=db)
     return parse_json_response(result)
 
 
 @app.post("/generate-tasks")
-async def generate_tasks_endpoint(request: TaskRequest):
+async def generate_tasks_endpoint(
+    request: TaskRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     """
     Generate personalized practice tasks based on the current user profile.
     Called only when user explicitly requests tasks.
     """
-    result = generate_tasks_for_profile(request.text)
+    result = generate_tasks_for_profile(request.text, user_id=current_user.id, db=db)
     # this already returns {"tasks": [...]}
     return parse_json_response(result, default_key="tasks")
 
@@ -198,6 +208,42 @@ async def login(
 async def get_current_user_info(current_user: User = Depends(get_current_user)):
     """获取当前登录用户信息"""
     return to_user_response(current_user)
+
+
+@app.get("/profile")
+async def get_user_profile(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """获取当前用户的画像数据（包括 TTR, MLU, Logic Score）"""
+    profile = db.query(UserProfile).filter(UserProfile.user_id == current_user.id).first()
+    
+    if not profile:
+        # 如果没有画像，返回默认值
+        return {
+            "ttr": 0.0,
+            "mlu": 0.0,
+            "logic_score": 0.0,
+            "profile_data": {},
+            "has_data": False
+        }
+    
+    # 解析 profile_data
+    profile_data = {}
+    if profile.profile_data:
+        try:
+            profile_data = json.loads(profile.profile_data)
+        except:
+            profile_data = {}
+    
+    return {
+        "ttr": profile.ttr or 0.0,
+        "mlu": profile.mlu or 0.0,
+        "logic_score": profile.logic_score or 0.0,
+        "profile_data": profile_data,
+        "has_data": True,
+        "updated_at": profile.updated_at.isoformat() if profile.updated_at else None
+    }
 
 
 @app.get("/users")

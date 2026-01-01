@@ -1,39 +1,58 @@
 from app.services.llm_client import client, OPENAI_MODEL
 from app.data.writing_corpus import get_ielts_essays
+from app.services.text_metrics import calculate_ttr, calculate_mlu
+from app.models import get_db, UserProfile, init_db
+from sqlalchemy.orm import Session
 import json
 import os
 
 
-PROFILE_FILE = os.path.join(
-    os.path.dirname(os.path.dirname(__file__)),
-    "data",
-    "user_profile.json",
-)
-
-
-def _load_user_profile() -> dict:
-    """Load existing user profile from JSON file (if any)."""
+def _load_user_profile(user_id: int, db: Session) -> dict:
+    """Load existing user profile from database."""
     try:
-        if not os.path.exists(PROFILE_FILE):
-            return {}
-        with open(PROFILE_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+        profile = db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
+        if profile and profile.profile_data:
+            return json.loads(profile.profile_data)
+        return {}
     except Exception as e:
-        print(f"Failed to load user profile: {e}")
+        print(f"Failed to load user profile from database: {e}")
         return {}
 
 
-def _save_user_profile(profile: dict) -> None:
-    """Persist user profile to JSON file."""
+def _save_user_profile(user_id: int, profile_data: dict, logic_score: float, text: str, db: Session) -> None:
+    """Save user profile to database with metrics."""
     try:
-        os.makedirs(os.path.dirname(PROFILE_FILE), exist_ok=True)
-        with open(PROFILE_FILE, "w", encoding="utf-8") as f:
-            json.dump(profile, f, ensure_ascii=False, indent=2)
+        # 计算 TTR 和 MLU
+        ttr_score = calculate_ttr(text)
+        mlu_score = calculate_mlu(text)
+        
+        # 查找或创建用户画像
+        profile = db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
+        
+        if profile:
+            # 更新现有画像
+            profile.profile_data = json.dumps(profile_data, ensure_ascii=False)
+            profile.ttr = ttr_score
+            profile.mlu = mlu_score
+            profile.logic_score = logic_score
+        else:
+            # 创建新画像
+            profile = UserProfile(
+                user_id=user_id,
+                profile_data=json.dumps(profile_data, ensure_ascii=False),
+                ttr=ttr_score,
+                mlu=mlu_score,
+                logic_score=logic_score
+            )
+            db.add(profile)
+        
+        db.commit()
     except Exception as e:
-        print(f"Failed to save user profile: {e}")
+        print(f"Failed to save user profile to database: {e}")
+        db.rollback()
 
 
-def analyze_logic_with_profile(text: str) -> str:
+def analyze_logic_with_profile(text: str, user_id: int = None, db: Session = None) -> str:
     """
     Analyze article logic and update a multi-dimensional user profile.
     This function does NOT generate practice tasks (tasks are generated separately on demand).
@@ -170,8 +189,11 @@ IMPORTANT RULES:
             })
 
         new_profile = data.get("profile")
-        if isinstance(new_profile, dict):
-            _save_user_profile(new_profile)
+        logic_score = data.get("overall_score", 0.0)
+        
+        # 保存到数据库（如果提供了 user_id）
+        if isinstance(new_profile, dict) and user_id and db:
+            _save_user_profile(user_id, new_profile, logic_score, text, db)
 
         return json.dumps(data, ensure_ascii=False)
 
@@ -184,13 +206,16 @@ IMPORTANT RULES:
         })
 
 
-def generate_tasks_for_profile(text: str) -> str:
+def generate_tasks_for_profile(text: str, user_id: int = None, db: Session = None) -> str:
     """
     Generate EXACTLY 3 targeted practice tasks based on the CURRENT user profile
     (and optionally the latest article text). This is called only when the user
     explicitly asks for practice tasks.
     """
-    existing_profile = _load_user_profile()
+    # 从数据库加载用户画像（如果提供了 user_id）
+    existing_profile = {}
+    if user_id and db:
+        existing_profile = _load_user_profile(user_id, db)
     existing_profile_json = json.dumps(existing_profile, ensure_ascii=False)
 
     prompt = f"""You are an academic writing coach.

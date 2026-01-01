@@ -1,6 +1,6 @@
-from sqlalchemy import create_engine, Column, Integer, String, DateTime
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, Float, Text, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, relationship
 from datetime import datetime
 import os
 from urllib.parse import quote_plus
@@ -37,6 +37,30 @@ class User(Base):
     username = Column(String(50), unique=True, index=True, nullable=False)
     hashed_password = Column(String(255), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # 关联关系
+    profile = relationship("UserProfile", back_populates="user", uselist=False)
+
+
+class UserProfile(Base):
+    __tablename__ = "user_profiles"
+    
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False, index=True)
+    
+    # 三个核心指标（0-100 分）
+    ttr = Column(Float, default=0.0, comment="Type-Token Ratio: 词汇丰富度 (0-100)")
+    mlu = Column(Float, default=0.0, comment="Mean Length of Utterance: 句法复杂度 (0-100)")
+    logic_score = Column(Float, default=0.0, comment="Logic Score: 逻辑连贯性 (0-100)")
+    
+    # 完整的 profile 数据（JSON 格式存储）
+    profile_data = Column(Text, comment="完整的用户画像数据（JSON格式）")
+    
+    # 时间戳
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # 关联关系
+    user = relationship("User", back_populates="profile")
 
 
 # 创建数据库表
