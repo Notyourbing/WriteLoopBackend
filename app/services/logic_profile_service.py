@@ -1,39 +1,59 @@
-from app.services.llm_client import client
+from app.services.llm_client import client, OPENAI_MODEL
 from app.data.writing_corpus import get_ielts_essays
+from app.services.text_metrics import calculate_ttr, calculate_mlu
+from app.models import get_db, UserProfile, init_db
+from sqlalchemy.orm import Session
+from typing import List
 import json
 import os
 
 
-PROFILE_FILE = os.path.join(
-    os.path.dirname(os.path.dirname(__file__)),
-    "data",
-    "user_profile.json",
-)
-
-
-def _load_user_profile() -> dict:
-    """Load existing user profile from JSON file (if any)."""
+def _load_user_profile(user_id: int, db: Session) -> dict:
+    """Load existing user profile from database."""
     try:
-        if not os.path.exists(PROFILE_FILE):
-            return {}
-        with open(PROFILE_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+        profile = db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
+        if profile and profile.profile_data:
+            return json.loads(profile.profile_data)
+        return {}
     except Exception as e:
-        print(f"Failed to load user profile: {e}")
+        print(f"Failed to load user profile from database: {e}")
         return {}
 
 
-def _save_user_profile(profile: dict) -> None:
-    """Persist user profile to JSON file."""
+def _save_user_profile(user_id: int, profile_data: dict, logic_score: float, text: str, db: Session) -> None:
+    """Save user profile to database with metrics."""
     try:
-        os.makedirs(os.path.dirname(PROFILE_FILE), exist_ok=True)
-        with open(PROFILE_FILE, "w", encoding="utf-8") as f:
-            json.dump(profile, f, ensure_ascii=False, indent=2)
+        # 计算 TTR 和 MLU
+        ttr_score = calculate_ttr(text)
+        mlu_score = calculate_mlu(text)
+        
+        # 查找或创建用户画像
+        profile = db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
+        
+        if profile:
+            # 更新现有画像
+            profile.profile_data = json.dumps(profile_data, ensure_ascii=False)
+            profile.ttr = ttr_score
+            profile.mlu = mlu_score
+            profile.logic_score = logic_score
+        else:
+            # 创建新画像
+            profile = UserProfile(
+                user_id=user_id,
+                profile_data=json.dumps(profile_data, ensure_ascii=False),
+                ttr=ttr_score,
+                mlu=mlu_score,
+                logic_score=logic_score
+            )
+            db.add(profile)
+        
+        db.commit()
     except Exception as e:
-        print(f"Failed to save user profile: {e}")
+        print(f"Failed to save user profile to database: {e}")
+        db.rollback()
 
 
-def analyze_logic_with_profile(text: str) -> str:
+def analyze_logic_with_profile(text: str, user_id: int = None, db: Session = None) -> str:
     """
     Analyze article logic and update a multi-dimensional user profile.
     This function does NOT generate practice tasks (tasks are generated separately on demand).
@@ -44,7 +64,9 @@ def analyze_logic_with_profile(text: str) -> str:
             "issues": [],
         })
 
-    existing_profile = _load_user_profile()
+    existing_profile = {}
+    if user_id and db:
+        existing_profile = _load_user_profile(user_id, db)
     existing_profile_json = json.dumps(existing_profile, ensure_ascii=False)
     
     # Load IELTS reference essays for comparison and examples
@@ -141,7 +163,7 @@ IMPORTANT RULES:
 
     try:
         completion = client.chat.completions.create(
-            model="gpt-4o",
+            model=OPENAI_MODEL,
             messages=[
                 {
                     "role": "system",
@@ -154,8 +176,7 @@ IMPORTANT RULES:
                 {"role": "user", "content": prompt},
             ],
             response_format={"type": "json_object"},
-            temperature=0.3,
-            max_tokens=2000,
+            max_completion_tokens=2000,
         )
 
         result = completion.choices[0].message.content.strip()
@@ -171,8 +192,11 @@ IMPORTANT RULES:
             })
 
         new_profile = data.get("profile")
-        if isinstance(new_profile, dict):
-            _save_user_profile(new_profile)
+        logic_score = data.get("overall_score", 0.0)
+        
+        # 保存到数据库（如果提供了 user_id）
+        if isinstance(new_profile, dict) and user_id and db:
+            _save_user_profile(user_id, new_profile, logic_score, text, db)
 
         return json.dumps(data, ensure_ascii=False)
 
@@ -184,14 +208,72 @@ IMPORTANT RULES:
             "summary": "An error occurred during analysis, please try again later.",
         })
 
+def analyze_logic_breaks(sentences: List[str]) -> str:
+    """
+    Analyze sentence-to-sentence logical coherence and return breakpoints.
+    Each breakpoint refers to the sentence index that feels disconnected from its previous sentence.
+    """
+    if not sentences or len(sentences) < 2:
+        return json.dumps({"breaks": []}, ensure_ascii=False)
 
-def generate_tasks_for_profile(text: str) -> str:
+    prompt = f"""You are a professional academic writing and logic analysis expert.
+Given the ordered list of sentences below, identify where the logical connection between consecutive sentences is weak or missing.
+Return ONLY a JSON object with an array named "breaks".
+
+Each break must use:
+- index: 0-based index of the sentence that feels disconnected from the previous sentence
+- reason: short explanation of why the connection is weak
+
+Limit to the most important 1-5 breakpoints. If everything is coherent, return an empty list.
+
+Sentences:
+{json.dumps(sentences, ensure_ascii=False)}
+"""
+
+    try:
+        completion = client.chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a professional academic writing and logic analysis expert. "
+                        "You ALWAYS return a single JSON object following the requested schema."
+                    ),
+                },
+                {"role": "user", "content": prompt},
+            ],
+            response_format={"type": "json_object"},
+            max_completion_tokens=800,
+        )
+
+        result = completion.choices[0].message.content.strip()
+        try:
+            data = json.loads(result)
+        except json.JSONDecodeError as e:
+            print(f"JSON decode error (logic breaks): {e}")
+            return json.dumps({"breaks": []}, ensure_ascii=False)
+
+        breaks = data.get("breaks", [])
+        if not isinstance(breaks, list):
+            breaks = []
+        return json.dumps({"breaks": breaks}, ensure_ascii=False)
+
+    except Exception as e:
+        print(f"Logic breaks analysis error: {e}")
+        return json.dumps({"breaks": []}, ensure_ascii=False)
+
+
+def generate_tasks_for_profile(text: str, user_id: int = None, db: Session = None) -> str:
     """
     Generate EXACTLY 3 targeted practice tasks based on the CURRENT user profile
     (and optionally the latest article text). This is called only when the user
     explicitly asks for practice tasks.
     """
-    existing_profile = _load_user_profile()
+    # 从数据库加载用户画像（如果提供了 user_id）
+    existing_profile = {}
+    if user_id and db:
+        existing_profile = _load_user_profile(user_id, db)
     existing_profile_json = json.dumps(existing_profile, ensure_ascii=False)
 
     prompt = f"""You are an academic writing coach.
@@ -230,7 +312,7 @@ IMPORTANT:
 
     try:
         completion = client.chat.completions.create(
-            model="gpt-4o",
+            model=OPENAI_MODEL,
             messages=[
                 {
                     "role": "system",
@@ -242,8 +324,7 @@ IMPORTANT:
                 {"role": "user", "content": prompt},
             ],
             response_format={"type": "json_object"},
-            temperature=0.5,
-            max_tokens=1000,
+            max_completion_tokens=1000,
         )
 
         result = completion.choices[0].message.content.strip()
@@ -256,5 +337,3 @@ IMPORTANT:
         return json.dumps({
             "tasks": []
         })
-
-

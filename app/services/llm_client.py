@@ -1,9 +1,19 @@
 from openai import OpenAI
+import os
+from dotenv import load_dotenv
+
+# 加载环境变量
+load_dotenv()
+
+# OpenAI 配置（从环境变量读取）
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o")
 
 # 初始化 OpenAI 客户端
 client = OpenAI(
-    api_key="sk-PdS4G2WDSl5Jk8Vhbu4TPW6FVPsEI4q1FbAO70qv1evxU4xb",
-    base_url="https://api.chatanywhere.tech/v1"
+    api_key=OPENAI_API_KEY,
+    base_url=OPENAI_BASE_URL,
 )
 
 def rewrite_sentence(sentence: str) -> str:
@@ -16,7 +26,7 @@ def rewrite_sentence(sentence: str) -> str:
             {"role": "user", "content": f"Rewrite this sentence in better English: {sentence}"}
         ]
 
-        completion = client.chat.completions.create(model="gpt-3.5-turbo", messages=messages)
+        completion = client.chat.completions.create(model=OPENAI_MODEL, messages=messages)
         return completion.choices[0].message.content.strip()
 
     except Exception as e:
@@ -34,7 +44,7 @@ def generate_suggestions(text: str) -> list:
         ]
 
         # 调用 OpenAI API 生成补全建议
-        completion = client.chat.completions.create(model="gpt-3.5-turbo", messages=messages)
+        completion = client.chat.completions.create(model=OPENAI_MODEL, messages=messages)
         suggestions = completion.choices[0].message.content.strip().split()
 
         return suggestions[:3]  # 返回前 3 个补全建议

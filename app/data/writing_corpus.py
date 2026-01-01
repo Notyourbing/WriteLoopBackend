@@ -76,10 +76,20 @@ def _load_ielts_data():
         return []
 
 
+# Cache for combined writing corpus to avoid repeated file reads
+_writing_corpus_cache = None
+
 def get_writing_corpus():
-    """Get combined corpus: original phrases + IELTS real exam sentences."""
+    """Get combined corpus: original phrases + IELTS real exam sentences. Uses caching for performance."""
+    global _writing_corpus_cache
+
+    # Return cached data if available
+    if _writing_corpus_cache is not None:
+        return _writing_corpus_cache
+
     ielts_phrases = _load_ielts_data()
-    return WRITING_CORPUS + ielts_phrases
+    _writing_corpus_cache = WRITING_CORPUS + ielts_phrases
+    return _writing_corpus_cache
 
 
 # Cache for IELTS essays to avoid repeated file reads
