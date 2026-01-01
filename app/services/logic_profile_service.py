@@ -63,7 +63,9 @@ def analyze_logic_with_profile(text: str, user_id: int = None, db: Session = Non
             "issues": [],
         })
 
-    existing_profile = _load_user_profile()
+    existing_profile = {}
+    if user_id and db:
+        existing_profile = _load_user_profile(user_id, db)
     existing_profile_json = json.dumps(existing_profile, ensure_ascii=False)
     
     # Load IELTS reference essays for comparison and examples
