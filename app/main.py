@@ -3,7 +3,11 @@ from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from app.services.suggest_service import generate_suggestions
 from app.services.rewrite_service import rewrite_sentence
-from app.services.logic_profile_service import analyze_logic_with_profile, generate_tasks_for_profile
+from app.services.logic_profile_service import (
+    analyze_logic_with_profile,
+    analyze_logic_breaks,
+    generate_tasks_for_profile,
+)
 from app.services.essay_service import get_all_essays, get_essay_by_id
 from fastapi.middleware.cors import CORSMiddleware
 from app.models import init_db, get_db, User, UserProfile
@@ -47,6 +51,9 @@ class RewriteRequest(BaseModel):
 
 class LogicAnalysisRequest(BaseModel):
     text: str
+
+class LogicBreaksRequest(BaseModel):
+    sentences: List[str]
 
 
 class TaskRequest(BaseModel):
@@ -112,6 +119,17 @@ async def analyze_logic_endpoint(
     # use enhanced logic analysis that also updates user profile
     result = analyze_logic_with_profile(request.text, user_id=current_user.id, db=db)
     return parse_json_response(result)
+
+@app.post("/analyze-breaks")
+async def analyze_breaks_endpoint(
+    request: LogicBreaksRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Analyze sentence-to-sentence logical coherence and return breakpoints.
+    """
+    result = analyze_logic_breaks(request.sentences)
+    return parse_json_response(result, default_key="breaks")
 
 
 @app.post("/generate-tasks")

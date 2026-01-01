@@ -3,6 +3,7 @@ from app.data.writing_corpus import get_ielts_essays
 from app.services.text_metrics import calculate_ttr, calculate_mlu
 from app.models import get_db, UserProfile, init_db
 from sqlalchemy.orm import Session
+from typing import List
 import json
 import os
 
@@ -206,6 +207,61 @@ IMPORTANT RULES:
             "issues": [],
             "summary": "An error occurred during analysis, please try again later.",
         })
+
+def analyze_logic_breaks(sentences: List[str]) -> str:
+    """
+    Analyze sentence-to-sentence logical coherence and return breakpoints.
+    Each breakpoint refers to the sentence index that feels disconnected from its previous sentence.
+    """
+    if not sentences or len(sentences) < 2:
+        return json.dumps({"breaks": []}, ensure_ascii=False)
+
+    prompt = f"""You are a professional academic writing and logic analysis expert.
+Given the ordered list of sentences below, identify where the logical connection between consecutive sentences is weak or missing.
+Return ONLY a JSON object with an array named "breaks".
+
+Each break must use:
+- index: 0-based index of the sentence that feels disconnected from the previous sentence
+- reason: short explanation of why the connection is weak
+
+Limit to the most important 1-5 breakpoints. If everything is coherent, return an empty list.
+
+Sentences:
+{json.dumps(sentences, ensure_ascii=False)}
+"""
+
+    try:
+        completion = client.chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a professional academic writing and logic analysis expert. "
+                        "You ALWAYS return a single JSON object following the requested schema."
+                    ),
+                },
+                {"role": "user", "content": prompt},
+            ],
+            response_format={"type": "json_object"},
+            max_completion_tokens=800,
+        )
+
+        result = completion.choices[0].message.content.strip()
+        try:
+            data = json.loads(result)
+        except json.JSONDecodeError as e:
+            print(f"JSON decode error (logic breaks): {e}")
+            return json.dumps({"breaks": []}, ensure_ascii=False)
+
+        breaks = data.get("breaks", [])
+        if not isinstance(breaks, list):
+            breaks = []
+        return json.dumps({"breaks": breaks}, ensure_ascii=False)
+
+    except Exception as e:
+        print(f"Logic breaks analysis error: {e}")
+        return json.dumps({"breaks": []}, ensure_ascii=False)
 
 
 def generate_tasks_for_profile(text: str, user_id: int = None, db: Session = None) -> str:
